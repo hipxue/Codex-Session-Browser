@@ -833,11 +833,12 @@ function webHtml() {
       --blue: #2563eb;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
     body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
     button, input, select { font: inherit; }
-    .app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; min-height: 640px; }
-    .sidebar { border-right: 1px solid var(--line); background: var(--panel); min-width: 0; display: flex; flex-direction: column; }
-    .toolbar { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+    .app { display: grid; grid-template-columns: 380px 1fr; height: 100dvh; min-height: 0; overflow: hidden; }
+    .sidebar { border-right: 1px solid var(--line); background: var(--panel); min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .toolbar { flex: 0 0 auto; padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
     .search { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     input, select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; color: var(--ink); }
     select {
@@ -865,7 +866,7 @@ function webHtml() {
     .spinner { display: none; width: 12px; height: 12px; border: 2px solid rgba(15,118,110,.25); border-top-color: var(--accent); border-radius: 999px; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
     button.scanning .spinner { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .list { overflow: auto; padding: 8px; }
+    .list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px; }
     .row { width: 100%; text-align: left; border: 1px solid transparent; background: transparent; padding: 10px; border-radius: 6px; display: grid; gap: 6px; }
     .row:hover, .row.active { background: #eef4f2; border-color: #c9d8d4; }
     .title { font-weight: 650; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -876,7 +877,7 @@ function webHtml() {
     .badge.active { color: var(--accent); background: #e4f5f1; }
     .badge.workspace_missing { color: var(--bad); background: #fff0ed; }
     .badge.projectless { color: var(--blue); background: #eaf1ff; }
-    .detail { overflow: auto; padding: 22px 28px 60px; }
+    .detail { min-width: 0; min-height: 0; overflow: auto; padding: 22px 28px 60px; }
     .detail-head { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 18px; display: grid; gap: 8px; }
     h1 { font-size: 24px; line-height: 1.25; margin: 0; letter-spacing: 0; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -885,6 +886,7 @@ function webHtml() {
     .content { white-space: pre-wrap; overflow-wrap: anywhere; }
     .empty { color: var(--muted); display: grid; place-items: center; min-height: 70vh; text-align: center; }
     @media (max-width: 860px) {
+      html, body { height: auto; overflow: auto; }
       .app { grid-template-columns: 1fr; height: auto; }
       .sidebar { height: 48vh; border-right: 0; border-bottom: 1px solid var(--line); }
       .detail { padding: 18px; }
@@ -959,9 +961,12 @@ function webHtml() {
     async function loadDetail(id) {
       state.selected = id;
       renderList();
+      const detail = el('detail');
+      detail.scrollTop = 0;
       const data = await fetch('/api/sessions/' + encodeURIComponent(id)).then(r => r.json());
       const s = data.session;
-      el('detail').innerHTML = '<section class="detail-head"><h1>' + esc(s.title) + '</h1><div class="badges">' + badges(s.status) + '</div><div class="meta">' + (s.projectless ? '单独对话 · ' : '') + esc(s.workspace_path || 'No Workspace') + '</div><div class="meta">创建 ' + esc(s.created_at_iso || 'unknown') + ' · 更新 ' + esc(s.updated_at_iso || 'unknown') + '</div><div class="actions"><button id="exportBtn" class="primary">导出 Markdown</button><button id="copyIdBtn">复制 ID</button><button id="deleteBtn" class="danger">删除会话</button></div><div id="exportPath" class="export-path ' + (s.exported_path ? 'visible' : '') + '">' + (s.exported_path ? '<strong>已导出：</strong>' + esc(s.exported_path) : '') + '</div></section><section>' + data.messages.map(m => '<article class="message"><div class="role">' + esc(m.role) + (m.created_at ? ' <span class="meta">(' + esc(m.created_at) + ')</span>' : '') + '</div><div class="content">' + esc(m.content) + '</div></article>').join('') + '</section>';
+      detail.innerHTML = '<section class="detail-head"><h1>' + esc(s.title) + '</h1><div class="badges">' + badges(s.status) + '</div><div class="meta">' + (s.projectless ? '单独对话 · ' : '') + esc(s.workspace_path || 'No Workspace') + '</div><div class="meta">创建 ' + esc(s.created_at_iso || 'unknown') + ' · 更新 ' + esc(s.updated_at_iso || 'unknown') + '</div><div class="actions"><button id="exportBtn" class="primary">导出 Markdown</button><button id="copyIdBtn">复制 ID</button><button id="deleteBtn" class="danger">删除会话</button></div><div id="exportPath" class="export-path ' + (s.exported_path ? 'visible' : '') + '">' + (s.exported_path ? '<strong>已导出：</strong>' + esc(s.exported_path) : '') + '</div></section><section>' + data.messages.map(m => '<article class="message"><div class="role">' + esc(m.role) + (m.created_at ? ' <span class="meta">(' + esc(m.created_at) + ')</span>' : '') + '</div><div class="content">' + esc(m.content) + '</div></article>').join('') + '</section>';
+      detail.scrollTop = 0;
       el('exportBtn').onclick = async () => {
         const res = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export', { method: 'POST' }).then(r => r.json());
         const path = el('exportPath');
