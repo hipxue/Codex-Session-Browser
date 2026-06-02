@@ -938,8 +938,19 @@ function serve(args) {
         )[0];
         const workspaces = jsonSql(
           dbPath,
-          `SELECT path,name,exists_on_disk,session_count,last_session_updated_at,'workspace' AS kind
-           FROM workspaces
+          `SELECT
+             workspace_path AS path,
+             CASE
+               WHEN workspace_path IS NULL OR workspace_path = '' THEN 'No Workspace'
+               ELSE replace(workspace_path, rtrim(workspace_path, replace(workspace_path, '/', '')), '')
+             END AS name,
+             max(workspace_exists) AS exists_on_disk,
+             count(*) AS session_count,
+             max(updated_at) AS last_session_updated_at,
+             'workspace' AS kind
+           FROM sessions
+           WHERE projectless = 0 AND workspace_path IS NOT NULL AND workspace_path != ''
+           GROUP BY workspace_path
            ORDER BY exists_on_disk DESC, session_count DESC, name ASC;`
         );
         return sendJson(res, { workspaces: projectless?.session_count ? [projectless, ...workspaces] : workspaces });
