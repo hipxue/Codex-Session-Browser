@@ -1,0 +1,16 @@
+{
+  "name": "codex-session-browser-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "codex-sessions": "./src/cli.mjs"
+  },
+  "scripts": {
+    "codex-sessions": "node ./src/cli.mjs",
+    "scan": "node ./src/cli.mjs scan",
+    "list": "node ./src/cli.mjs list",
+    "serve": "node ./src/cli.mjs serve",
+    "doctor": "node ./work/codex-session-doctor.mjs"
+  }
+}
