@@ -191,6 +191,18 @@ Web UI 支持：
 - 重新扫描
 - 导出 Markdown
 - 显示已导出路径
+- 删除会话
+
+### 删除会话
+
+Web UI 的详情页提供 `删除会话` 按钮。删除会：
+
+- 从本工具索引中移除该会话。
+- 从 Codex 的 `~/.codex/state_5.sqlite` 删除对应 `threads` 记录。
+- 删除对应的 Codex JSONL 会话文件。
+- 清理 `.codex-global-state.json` 中对该会话 ID 的引用。
+
+这是破坏性操作。Web UI 会要求二次确认，但删除后本工具不会保留恢复副本。
 
 ## 环境变量
 
@@ -247,7 +259,7 @@ node ~/.codex/skills/codex-session-export/scripts/export_session.mjs \
 默认行为：
 
 - 只读扫描 Codex 原始数据。
-- 不修改 `~/.codex` 里的原始会话文件。
+- 除非用户点击删除会话，否则不修改 `~/.codex` 里的原始会话文件。
 - 派生索引写入项目自己的 `work/` 目录。
 - Markdown 导出写入用户指定目录。
 - Web UI 默认只监听 `127.0.0.1`。

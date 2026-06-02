@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -687,6 +688,88 @@ function markSessionExported(id, file) {
   shellSql(dbPath, `UPDATE sessions SET exported_path = ${sqlString(file)} WHERE id = ${sqlString(id)};`);
 }
 
+function removeIdReferences(value, id) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== id)
+      .map((item) => removeIdReferences(item, id));
+  }
+  if (!value || typeof value !== "object") return value;
+  for (const key of Object.keys(value)) {
+    if (key === id) {
+      delete value[key];
+    } else {
+      value[key] = removeIdReferences(value[key], id);
+    }
+  }
+  return value;
+}
+
+function removeSessionFromGlobalState(id) {
+  const globalStatePath = join(codexDir, ".codex-global-state.json");
+  if (!existsSync(globalStatePath)) return false;
+  const state = JSON.parse(readFileSync(globalStatePath, "utf8"));
+  removeIdReferences(state, id);
+  writeFileSync(globalStatePath, JSON.stringify(state));
+  return true;
+}
+
+function removeSessionFromCodexState(id) {
+  const stateDb = join(codexDir, "state_5.sqlite");
+  if (!existsSync(stateDb)) return false;
+  shellSql(
+    stateDb,
+    `
+BEGIN;
+DELETE FROM thread_dynamic_tools WHERE thread_id = ${sqlString(id)};
+DELETE FROM thread_spawn_edges WHERE parent_thread_id = ${sqlString(id)} OR child_thread_id = ${sqlString(id)};
+DELETE FROM threads WHERE id = ${sqlString(id)};
+COMMIT;
+`
+  );
+  return true;
+}
+
+function removeSessionIndexRows(id) {
+  shellSql(
+    dbPath,
+    `
+BEGIN;
+DELETE FROM session_fts WHERE session_id = ${sqlString(id)};
+DELETE FROM messages WHERE session_id = ${sqlString(id)};
+DELETE FROM sessions WHERE id = ${sqlString(id)};
+COMMIT;
+`
+  );
+  rebuildWorkspaces();
+}
+
+function deleteSession(id) {
+  requireDb();
+  const loaded = loadSession(id, { all: true });
+  if (!loaded) return null;
+  const sourcePath = loaded.session.source_path;
+  const resolvedSourcePath = sourcePath ? resolve(sourcePath) : null;
+  const resolvedCodexDir = resolve(codexDir);
+  let sourceDeleted = false;
+  if (resolvedSourcePath && resolvedSourcePath.startsWith(resolvedCodexDir) && existsSync(resolvedSourcePath)) {
+    rmSync(resolvedSourcePath);
+    sourceDeleted = true;
+  }
+  const codexStateUpdated = removeSessionFromCodexState(id);
+  const globalStateUpdated = removeSessionFromGlobalState(id);
+  removeSessionIndexRows(id);
+  return {
+    ok: true,
+    id,
+    title: loaded.session.title,
+    sourcePath,
+    sourceDeleted,
+    codexStateUpdated,
+    globalStateUpdated,
+  };
+}
+
 function exportSession(args) {
   requireDb();
   const all = args.includes("--all");
@@ -768,6 +851,8 @@ function webHtml() {
     button { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; color: var(--ink); cursor: pointer; }
     button:disabled { opacity: .68; cursor: wait; }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { background: #fff; border-color: #f0b8ad; color: var(--bad); }
+    button.danger:hover { background: #fff0ed; }
     button.icon { width: 38px; padding: 8px 0; }
     .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .workspace-filter { grid-column: 1 / -1; }
@@ -876,7 +961,7 @@ function webHtml() {
       renderList();
       const data = await fetch('/api/sessions/' + encodeURIComponent(id)).then(r => r.json());
       const s = data.session;
-      el('detail').innerHTML = '<section class="detail-head"><h1>' + esc(s.title) + '</h1><div class="badges">' + badges(s.status) + '</div><div class="meta">' + (s.projectless ? '单独对话 · ' : '') + esc(s.workspace_path || 'No Workspace') + '</div><div class="meta">创建 ' + esc(s.created_at_iso || 'unknown') + ' · 更新 ' + esc(s.updated_at_iso || 'unknown') + '</div><div class="actions"><button id="exportBtn" class="primary">导出 Markdown</button><button id="copyIdBtn">复制 ID</button></div><div id="exportPath" class="export-path ' + (s.exported_path ? 'visible' : '') + '">' + (s.exported_path ? '<strong>已导出：</strong>' + esc(s.exported_path) : '') + '</div></section><section>' + data.messages.map(m => '<article class="message"><div class="role">' + esc(m.role) + (m.created_at ? ' <span class="meta">(' + esc(m.created_at) + ')</span>' : '') + '</div><div class="content">' + esc(m.content) + '</div></article>').join('') + '</section>';
+      el('detail').innerHTML = '<section class="detail-head"><h1>' + esc(s.title) + '</h1><div class="badges">' + badges(s.status) + '</div><div class="meta">' + (s.projectless ? '单独对话 · ' : '') + esc(s.workspace_path || 'No Workspace') + '</div><div class="meta">创建 ' + esc(s.created_at_iso || 'unknown') + ' · 更新 ' + esc(s.updated_at_iso || 'unknown') + '</div><div class="actions"><button id="exportBtn" class="primary">导出 Markdown</button><button id="copyIdBtn">复制 ID</button><button id="deleteBtn" class="danger">删除会话</button></div><div id="exportPath" class="export-path ' + (s.exported_path ? 'visible' : '') + '">' + (s.exported_path ? '<strong>已导出：</strong>' + esc(s.exported_path) : '') + '</div></section><section>' + data.messages.map(m => '<article class="message"><div class="role">' + esc(m.role) + (m.created_at ? ' <span class="meta">(' + esc(m.created_at) + ')</span>' : '') + '</div><div class="content">' + esc(m.content) + '</div></article>').join('') + '</section>';
       el('exportBtn').onclick = async () => {
         const res = await fetch('/api/sessions/' + encodeURIComponent(id) + '/export', { method: 'POST' }).then(r => r.json());
         const path = el('exportPath');
@@ -884,6 +969,21 @@ function webHtml() {
         path.innerHTML = '<strong>已导出：</strong>' + esc(res.path);
       };
       el('copyIdBtn').onclick = () => navigator.clipboard.writeText(id);
+      el('deleteBtn').onclick = async () => {
+        const ok = confirm('确认删除这个会话吗？\\n\\n这会同时删除 Codex 里的会话记录和原始 JSONL 文件，无法从本工具恢复。');
+        if (!ok) return;
+        const again = confirm('再次确认：真的要永久删除？');
+        if (!again) return;
+        const res = await fetch('/api/sessions/' + encodeURIComponent(id), { method: 'DELETE' }).then(r => r.json());
+        if (!res.ok) {
+          alert('删除失败：' + (res.error || 'unknown'));
+          return;
+        }
+        state.selected = null;
+        el('detail').innerHTML = '<div class="empty">已删除：' + esc(res.title || id) + '</div>';
+        await loadWorkspaces();
+        await loadSessions();
+      };
     }
     el('searchBtn').onclick = loadSessions;
     el('query').onkeydown = (e) => { if (e.key === 'Enter') loadSessions(); };
@@ -999,6 +1099,11 @@ function serve(args) {
         return sendJson(res, { counts, sessions: rows });
       }
       const detailMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      if (detailMatch && req.method === "DELETE") {
+        const result = deleteSession(decodeURIComponent(detailMatch[1]));
+        if (!result) return sendJson(res, { error: "not found" }, 404);
+        return sendJson(res, result);
+      }
       if (detailMatch) {
         const loaded = loadSession(decodeURIComponent(detailMatch[1]));
         if (!loaded) return sendJson(res, { error: "not found" }, 404);
